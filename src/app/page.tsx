@@ -1,113 +1,378 @@
-import Image from "next/image";
+'use client'
+import Modal from "../components/Modal";
+import PaginationControl from "../components/PaginationControl";
+import SearchAndFilterControls from "../components/searchAndFilterControls";
+import ToDoTable from "../components/toDoTable";
+import { PaginatedTodos, Todo, dummyTodoTableProps, Filters, ModalProps, editProps } from "../utils/types";
+import { useEffect, useState } from "react";
+import axios, { AxiosError } from 'axios';
+import { baseurl } from "../utils/constants";
+import Metrics from "../components/Metrics";
+import React from "react";
+
+const { 
+  currentPage,
+  totalPages,
+  onPageChange,
+} = dummyTodoTableProps
+
+const initialFilters: Filters = {
+  done: null,
+  priority: "All",
+  text: "",
+  
+  
+}
 
 export default function Home() {
+
+  const [showModal, setShowModal] = useState(false)
+
+  const closeModal = () => {setShowModal(false)}
+
+
+  const [todos, setTodos] = useState(dummyTodoTableProps.todos)
+  const [totalPages, setTotalPages] = useState(0)
+  const [currentPage, setCurrentPage] = useState(0)
+  const [totalTodos, setTotalTodos] = useState(0)
+  // const [loading, setLoading] = useState(false)
+  const [sorting, setSorting] = useState('');
+  const [filters, setFilters] = useState<Filters>(initialFilters)
+  const [prioritySort, setPrioritySort] = useState('')
+  const [dueDateSort, setDueDateSort] = useState('')
+  const [avgTimeToFinishTasks, setAvgTimeToFinishTasks] = useState(0)
+  const [avgTimeToFinishLowTasks, setAvgTimeToFinishLowTasks] = useState(0)
+  const [avgTimeToFinishMediumTasks, setAvgTimeToFinishMediumTasks] = useState(0)
+  const [avgTimeToFinishHighTasks, setAvgTimeToFinishHighTasks] = useState(0)
+  
+  const handleSaveTodo = async (id: number | null, text: string, priority:  "High" | "Medium" | "Low", dueDate?: string | undefined) => {
+    //setLoading(true)
+    
+    if (id !== null) {
+      try {
+        const response = await axios.put(`${baseurl}/${id}`, {
+          text,
+          priority,
+          ...(dueDate !== undefined && {dueDate})
+        })
+        if (response.status === 200) {
+          await fetchData(sorting, filters)
+          //setLoading(false)
+        } else {
+          throw new Error("Error while updating data")
+        }
+      } catch (err) {
+        
+        alert(err)
+        //setLoading(false)
+      } 
+      setShowModal(false)
+      return
+    }
+    try {
+      const response = await axios.post(baseurl, {
+        text,
+        priority,
+        ...(dueDate !== undefined && {dueDate})
+      })
+      
+      if (response.status == 201) {
+        await fetchData(sorting, filters)
+        alert("To do created succesfully")
+        //setLoading(false)
+      } else {
+        throw new Error("Error while creating todo")
+      }
+    } catch (err) {
+      
+      alert(err)
+      //setLoading(false)
+    } 
+    setShowModal(false)
+    return
+  }
+  const [currentTodo, setCurrentTodo] = useState<ModalProps>({
+    id: null,
+    text: '',
+    title: 'New To Do',
+    priority: 'Medium',
+    dueDate: '',
+    closeModal: closeModal,
+    handleSaveBtn: handleSaveTodo,
+  }); 
+  const onCheckboxChange = async (id: number, isChecked: boolean) => {
+    const updatedTodos = todos.map((todo: Todo) => {
+      if (todo.id === id) {
+        return {...todo, done: isChecked}
+      }
+      return todo
+    })
+    if (isChecked) {
+      try{
+        const response = await axios.post(`${baseurl}/${id}/done`)
+        // console.log(response.statusText.toString())
+        // console.log(response.data)
+        fetchData(sorting, filters)
+      } catch (err) {
+        alert(err)
+      }
+    } else {
+      try{
+        const response = await axios.put(`${baseurl}/${id}/undone`)
+        // console.log(response.status.toString())
+        // console.log(response.data)
+        fetchData(sorting, filters)
+      } catch (err) {
+        alert(err)
+      }
+    }
+    setTodos(updatedTodos)
+  }
+  const handleSearchBtn = async (filters: Filters) => {
+    
+    await fetchData('', filters)
+    setSorting('')
+    setFilters(filters)
+    
+  }
+  const fetchData = async (sortBy: string, filters: Filters) => {
+    //setLoading(true);
+    
+    try {
+      const {done, text, priority, page} = filters
+      console.log("fetchData called with params:", { text, priority, done, page, sortBy });
+      const response = await axios.get(baseurl, {
+        params: {
+          text, 
+          ...(priority !== 'All' && {priority}),
+          ...(done !== null && {done}),
+          ...(page !== undefined && {page}),
+          sortBy
+        }
+      });
+      if (response.status != 200) {
+        throw new Error()
+      }
+      
+      const data: PaginatedTodos= response.data
+      const {items, totalPages, totalItems, currentPage, 
+        avgTimeToFinishTasks, avgTimeToFinishTasksPriorityLow,
+        avgTimeToFinishTaskspriorityHigh, avgTimeToFinishTaskspriorityMedium
+       } = data
+      
+      setTodos(items)
+      setCurrentPage(currentPage)
+      setTotalPages(totalPages)
+      setTotalTodos(totalItems)
+      setAvgTimeToFinishHighTasks(avgTimeToFinishTaskspriorityHigh)
+      setAvgTimeToFinishMediumTasks(avgTimeToFinishTaskspriorityMedium)
+      setAvgTimeToFinishLowTasks(avgTimeToFinishTasksPriorityLow)
+      setAvgTimeToFinishTasks(avgTimeToFinishTasks)
+      
+      //setLoading(false)
+      
+    } catch (er) {
+      alert(er)
+    }
+    
+  }
+  const handleEditClick = (editProps: editProps) => {
+    const {id, text, priority, dueDate} = editProps
+    
+    setCurrentTodo({
+      ...currentTodo,
+      id: id,
+      text: text, 
+      priority: priority,
+      dueDate: dueDate === undefined ? '' : dueDate
+    })
+    setShowModal(true)
+    
+  }
+  const handleNewTodo = () => {
+    
+    setCurrentTodo({
+      ...currentTodo,
+      id: null,
+      text: '',
+      priority: 'Medium',
+      dueDate: ''
+    })
+    setShowModal(true)
+  }
+  const navToFirst = async () => {
+    // setLoading(true)
+    
+    setFilters({
+      ...filters,
+      page: 0
+    })
+    
+    // setLoading(false)
+  }
+  const navToPrev = async () => {
+    if (currentPage >= 1) {
+      // setLoading(true)
+      setFilters({
+        ...filters,
+        page: currentPage - 1
+      })
+      
+      // setLoading(false)
+    }
+    return
+    
+  }
+  const navToNext = async () => {
+    if (currentPage < totalPages - 1) {
+      // setLoading(true)
+      setFilters({
+        ...filters,
+        page: currentPage + 1
+      })
+      // setLoading(false)
+    }
+    
+  }
+  const navToLast = async () => {
+    // setLoading(true)
+    setFilters({
+      ...filters,
+      page: totalPages - 1
+    })
+    
+  }
+  
+  const handleSortClick = async (key: 'priority' | 'dueDate', direction: string) =>  {
+    if (key === 'priority') {
+      if (!direction || direction === 'asc') {
+        setPrioritySort('desc')
+      }
+      else {
+        setPrioritySort('asc')
+      }
+    }
+    if (key === 'dueDate') {
+      // console.log('dueDate', direction)
+      if (!direction || direction === 'desc') {
+        setDueDateSort('asc')
+      }
+      else {
+        setDueDateSort('desc')
+      }
+    }
+    return
+  }
+  const handleQuitSort = (key: 'priority' | 'dueDate') => {
+    if (key === 'dueDate') {
+      setDueDateSort('')
+    } else {
+      setPrioritySort('')
+    }
+    
+  }
+
+  const handleDelete = async (todo: Todo) => {
+    // setLoading(true)
+  
+    const {id, text} = todo
+    const confirmed = window.confirm(`Do you want to delete this task? \n ${todo.text}`)
+
+    if (!confirmed) {
+      // setLoading(false)
+      return;
+    }
+    try {
+      const response = await axios.delete(`${baseurl}/${id}`)
+      if (response.status === 200) {
+        fetchData(sorting, filters);
+      } else {
+        throw new Error("error while deleting task")
+      }
+    } catch (err) {
+       alert(err)
+    }
+  }
+  
+  useEffect(() => {
+
+      let sortingBy: String[] = []
+
+      if(prioritySort) {
+          sortingBy.push(`priority${prioritySort === 'desc' ? ':desc' : ''}`)
+      }
+      if(dueDateSort) {
+          sortingBy.push(`dueDate${dueDateSort === 'desc' ? ':desc' : ''}`)
+      }
+      // console.log(sortString)
+      setSorting(sortingBy.join(','))
+      // console.log(sortString)
+
+      // console.log(sorting)
+  }, [prioritySort, dueDateSort])
+  
+  useEffect(() => {
+    navToFirst()
+    // console.log(sorting)
+  },[sorting])
+  
+  useEffect(() => {
+    fetchData(sorting, filters)
+  }, [])
+  
+  useEffect(() => {
+    fetchData(sorting, filters)
+  }, [filters])
+  
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+    showModal ? (
+      <div className="w-full h-full">
+        <Modal {...currentTodo}/>
+      </div>
+    ) :
+      <div className="min-h-screen flex flex-col justify-center items-center bg-gray-100 overflow-y-auto py-5" >
+        <div className=" w-10/12  bg-white border border-black p-2 justify-center items-center ">
+          <SearchAndFilterControls handleSearch={handleSearchBtn} />
         </div>
+        <div className=" self-start w-10/12 mx-auto my-3">
+          <button className="w-1/6 h-10 rounded-md bg-gray-300" onClick={handleNewTodo}> New To do </button>
+        </div>
+        <div className="w-full flex flex-col items-center justify-center">
+            <div className="w-10/12 my-3">
+              <ToDoTable 
+                todos={todos}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                onCheckboxChange={onCheckboxChange}
+                handleEdit={handleEditClick}
+                handleSort={handleSortClick}
+                prioritySort={prioritySort}
+                dueDateSort={dueDateSort} 
+                handleQuitSort={handleQuitSort}  
+                handleDelete={handleDelete}  />
+            </div>
+            <div className="w-10/12 flex items-start justify-center">
+              <PaginationControl 
+              totalPages={totalPages} 
+              currentPage={currentPage + 1} 
+              handlePrevPage={navToPrev}
+              handleFirstPage={navToFirst}
+              handleLastPage={navToLast}
+              handleNextPage={navToNext} />
+            </div>
+            <div className="w-10/12 flex items-start justify-center mt-8">
+              <Metrics 
+                avgTimeToFinishTasks={avgTimeToFinishTasks.toString()} 
+                avgTimeToFinishTasksPriorityLow={avgTimeToFinishLowTasks.toString()} 
+                avgTimeToFinishTasksPriorityMedium={avgTimeToFinishMediumTasks.toString()} 
+                avgTimeToFinishTasksPriorityHigh={avgTimeToFinishHighTasks.toString()} />
+      
+            </div>
+
+        </div>
+  
       </div>
-
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
   );
 }
